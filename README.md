@@ -18,7 +18,7 @@ Data sources are provided by the public ``S3 buckets``. The first bucket contain
 `users`, `songs`, `artists`, `time`
 
 ### ETL
-The ETL (Extract-Transform-Load) process is relatively straightforward, with 3 main steps.
+The ETL (Extract-Transform-Load) process is relatively straightforward, with 2 main steps.
 1. Create `column_names.py` to allow easy access to column names, especially if changes are required.
 2. Run `etl.py` to load data from the public S3 buckets into PySpark SparkSession.
 
@@ -51,7 +51,7 @@ virtualenv -p python3 <desired-path>
 source <desired-path>/bin/activate
 ```
 
-3. Install the requirements:
+2. Install the requirements:
 ```
 pip install -r requirements.txt
 ```
