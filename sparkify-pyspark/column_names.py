@@ -1,8 +1,8 @@
 # Dimension Table - Users
 users = {
-    'USER_ID': 'user_id',
-    'FIRST_NAME': 'first_name',
-    'LAST_NAME': 'last_name',
+    'USER_ID': 'userId',
+    'FIRST_NAME': 'firstName',
+    'LAST_NAME': 'lastName',
     'GENDER': 'gender',
     'LEVEL': 'level'
 }
