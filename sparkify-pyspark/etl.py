@@ -1,6 +1,7 @@
 import os
 import zipfile
 import configparser
+from pyspark.sql import SQLContext
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
@@ -23,6 +24,11 @@ def create_spark_session() -> SparkSession:
 
 
 def process_song_data(spark: SparkSession, input_data: str, output_data: str) -> None:
+    """
+    Function to read all song data stored in song-data/*/*/*/*.json directory and
+    partitions them into parquet (columnar) format.
+    The songs parquet is partitioned by year and artist_id.
+    """
     # get filepath to song data file
     song_data = input_data + "song-data/*/*/*/*.json"
 
@@ -58,6 +64,12 @@ def process_song_data(spark: SparkSession, input_data: str, output_data: str) ->
 
 
 def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> None:
+    sqlContext = SQLContext(spark)
+    """
+    Function to read all song data stored in log-data directory and partitions
+    them into parquet (columnar) format. Events are retrieved by filtering for 
+    `NextSong` labels under `page` column.
+    """
     # get filepath to log data file
     log_data = input_data + 'log-data'
 
@@ -79,7 +91,7 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
     users_pyspark_df.show(5, truncate=False)
 
     # write users table to parquet files
-    users_pyspark_df.write.parquet(input_data + 'users')
+    users_pyspark_df.write.parquet(output_data + 'users')
 
     # create timestamp column from original timestamp column
     tsFormat = "yyyy-MM-dd HH:MM:ss z"
@@ -105,7 +117,7 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
     time_table.show(5)
 
     # write time table to parquet files partitioned by year and month
-    time_table.write.partitionBy("year", "month").parquet(input_data+'time')
+    time_table.write.partitionBy("year", "month").parquet(output_data+'time')
 
     # get filepath to song data file
     song_data = input_data + "song-data/*/*/*/*.json"
@@ -113,32 +125,72 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
     print('Logging Song Log Schema ~')
     song_pyspark_df.printSchema()
 
-    # read in song data to use for songplays table
-    songplays_table = song_pyspark_df.join(
-        songplay_log_pyspark_df,
-        song_pyspark_df['artist_name'] == songplay_log_pyspark_df['artist']
-    ).withColumn(
-        'songplay_id', F.monotonically_increasing_id()
-    ).withColumn(
-        'start_time', F.to_timestamp(F.date_format(
+    # read artists and songs parquet
+    songs_pyspark_df = sqlContext.read.parquet('./songs')
+    artists_pyspark_df = sqlContext.read.parquet('./artists')
+
+    # add start_time column
+    songplay_log_pyspark_df = songplay_log_pyspark_df.withColumn(
+        "start_time",
+        F.to_timestamp(F.date_format(
                 (F.col('ts')/1000).cast(dataType=T.TimestampType()), tsFormat), tsFormat)
-    ).select(
-        'songplay_id',
-        'start_time',
-        F.col('userId').alias('user_id'),
-        'level',
-        'song_id',
-        'artist_id',
-        F.col('sessionId').alias('session_id'),
-        'location',
-        F.col('userAgent').alias('user_agent'),
-        F.year(F.col('start_time')).alias('year'),
-        F.month(F.col('start_time')).alias('month'))
-    print('Logging Songplays Schema ~')
-    songplays_table.printSchema()
+    )
+
+    # create lazily evaluated view
+    songplay_log_pyspark_df.createOrReplaceTempView("events_table")
+    songs_pyspark_df.createOrReplaceTempView("songs_table")
+    artists_pyspark_df.createOrReplaceTempView("artists_table")
+    time_table.createOrReplaceTempView("time_table")
+
+    # read in song data to use for songplays table
+    songplays_table = spark.sql(
+        """
+        SELECT 
+            e.start_time,
+            e.userId,
+            e.level,
+            s.song_id,
+            s.artist_id,
+            e.sessionId,
+            e.userAgent,
+            t.year,
+            t.month
+        FROM events_table e 
+        JOIN songs_table s ON e.song = s.title AND e.length = s.duration 
+        JOIN artists_table a ON e.artist = a.artist_name AND a.artist_id = s.artist_id
+        JOIN time_table t ON e.start_time = t.start_time
+        """
+    )
+    # conditions = [
+    #     song_pyspark_df['artist_name'] == songplay_log_pyspark_df['artist'],
+    #     song_pyspark_df['title'] == songplay_log_pyspark_df['song'],
+    #     song_pyspark_df['duration'] == songplay_log_pyspark_df['length']
+    #     ]
+    # songplays_table = song_pyspark_df.join(
+    #     songplay_log_pyspark_df,
+    #     conditions
+    # ).withColumn(
+    #     'songplay_id', F.monotonically_increasing_id()
+    # ).withColumn(
+    #     'start_time', F.to_timestamp(F.date_format(
+    #             (F.col('ts')/1000).cast(dataType=T.TimestampType()), tsFormat), tsFormat)
+    # ).select(
+    #     'songplay_id',
+    #     'start_time',
+    #     F.col('userId').alias('user_id'),
+    #     'level',
+    #     'song_id',
+    #     'artist_id',
+    #     F.col('sessionId').alias('session_id'),
+    #     'location',
+    #     F.col('userAgent').alias('user_agent'),
+    #     F.year(F.col('start_time')).alias('year'),
+    #     F.month(F.col('start_time')).alias('month'))
+    # print('Logging Songplays Schema ~')
+    # songplays_table.printSchema()
 
     # write songplays table to parquet files partitioned by year and month
-    songplays_table.write.partitionBy("year", "month").parquet(input_data+'songplays')
+    songplays_table.write.partitionBy("year", "month").parquet(output_data+'songplays')
 
 
 def main() -> None:
