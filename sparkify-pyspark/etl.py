@@ -44,11 +44,14 @@ def process_song_data(spark: SparkSession, input_data: str, output_data: str) ->
     songs_pyspark_df = raw_song_df.select(
         [col for col in songs.values()]
     )
+
+    # drop duplicates
+    songs_pyspark_df = songs_pyspark_df.dropDuplicates(['song_id'])
     print('Songs - PySpark DF')
     songs_pyspark_df.show()
 
     # write songs table to parquet files partitioned by year and artist
-    songs_pyspark_df.write.partitionBy('year', 'artist_id').parquet(output_data + 'songs')
+    songs_pyspark_df.write.mode('overwrite').partitionBy('year', 'artist_id').parquet(output_data + 'songs')
 
     # extract columns to create artists table - PySpark DF
     print('Printing Artist Schema ~')
@@ -56,11 +59,14 @@ def process_song_data(spark: SparkSession, input_data: str, output_data: str) ->
     artists_pyspark_df = raw_song_df.select(
         [col for col in artists.values()]
     )
+
+    # drop duplicates
+    artists_pyspark_df = artists_pyspark_df.dropDuplicates(['artist_id'])
     print('Artists - PySpark DF')
     artists_pyspark_df.show()
 
     # write artists table to parquet files
-    artists_pyspark_df.write.parquet(output_data + 'artists')
+    artists_pyspark_df.write.mode('overwrite').parquet(output_data + 'artists')
 
 
 def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> None:
@@ -87,11 +93,14 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
     users_pyspark_df = raw_log_df.select(
         [col for col in users.values()]
     )
+
+    # drop duplicates
+    users_pyspark_df = users_pyspark_df.dropDuplicates(['user_id'])
     print('Logging users table - PySpark')
     users_pyspark_df.show(5, truncate=False)
 
     # write users table to parquet files
-    users_pyspark_df.write.parquet(output_data + 'users')
+    users_pyspark_df.write.mode('overwrite').parquet(output_data + 'users')
 
     # create timestamp column from original timestamp column
     tsFormat = "yyyy-MM-dd HH:MM:ss z"
@@ -112,12 +121,15 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
         F.dayofmonth(F.col('timestamp')).alias('dayofmonth'),
         F.hour(F.col('timestamp')).alias('hour')
     )
+
+    # drop duplicates
+    time_table = time_table.dropDuplicates(['start_time'])
     print('Logging Songplay Log Schema ~ After creating time table')
     time_table.printSchema()
     time_table.show(5)
 
     # write time table to parquet files partitioned by year and month
-    time_table.write.partitionBy("year", "month").parquet(output_data+'time')
+    time_table.write.mode('overwrite').partitionBy("year", "month").parquet(output_data+'time')
 
     # get filepath to song data file
     song_data = input_data + "song-data/*/*/*/*.json"
@@ -190,7 +202,7 @@ def process_log_data(spark: SparkSession, input_data: str, output_data: str) -> 
     # songplays_table.printSchema()
 
     # write songplays table to parquet files partitioned by year and month
-    songplays_table.write.partitionBy("year", "month").parquet(output_data+'songplays')
+    songplays_table.write.mode('overwrite').partitionBy("year", "month").parquet(output_data+'songplays')
 
 
 def main() -> None:
